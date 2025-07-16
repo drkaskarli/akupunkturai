@@ -1,0 +1,7 @@
+openai
+gradio>=3.50.2
+fpdf
+pytesseract
+pillow
+PyPDF2
+qrcode
