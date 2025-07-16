@@ -1,7 +1,5 @@
+gradio>=4.0
 openai
-gradio>=3.50.2
 fpdf
-pytesseract
-pillow
-PyPDF2
 qrcode
+Pillow
