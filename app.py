@@ -79,21 +79,18 @@ def archive_patient_record(name, pid, symptoms, physical, summary):
 def generate_summary(symptoms, physical):
     prompt = f"""
     Aşağıdaki hasta bilgilerine dayanarak Çin Tıbbı prensiplerine göre bir değerlendirme yap:
-    - Semptomları Çin Tıbbı'na göre tanımla (örneğin Qi eksikliği, toprak element eksikliği, Nem birikimi, Karaciğer Yang fazlalığı gibi).
-    - Klasik literatüre *atıfta bulunmadan*, bu kavramların anlamını açıkla ve klinik yorum yap.
-    - "Akupunktur Noktaları" başlığı altında her bir semptom için özgül noktaları öner, özellikleri ve işlevlerini açıkla.
-    - Gerekirse kupa, moxa, elektro-akupunktur gibi tamamlayıcı yöntemler öner.
+    - Semptomları Çin Tıbbı'na göre tanımla
+    - "Akupunktur Noktaları" başlığı altında her bir semptom için özgül noktaları öner
+    - Gerekirse tamamlayıcı yöntemler öner
+    - ICD-10 tanı kodlarını ve "Takip Planı"nı ver
     Kullanıcıdan gelen bilgiler:
     Semptomlar: {symptoms}
     Muayene Bulguları: {physical}
-    Son olarak:
-    - ICD-10 tanı kodlarını listele.
-    - "Takip Planı" başlığı altında yaşam tarzı, seans sıklığı gibi öneriler sun.
     """
 
     api_key = os.environ.get("MY_OPENAI_KEY")
     if not api_key:
-        raise ValueError("OpenAI API anahtarı bulunamadı. Ortam değişkeni 'MY_OPENAI_KEY' ayarlanmalıdır.")
+        raise ValueError("OpenAI API anahtarı eksik. 'MY_OPENAI_KEY' ortam değişkenini ayarlayın.")
 
     try:
         client = openai.OpenAI(api_key=api_key)
@@ -107,21 +104,10 @@ def generate_summary(symptoms, physical):
         text = response.choices[0].message.content
         return re.sub(r"```html[\s\S]*?```", "", text)
     except Exception as e:
-        return f"❌ OpenAI yanıtı alınamadı. Detay: {str(e)}"
+        return f"OpenAI hatası: {str(e)}"
 
 def answer_question(question):
-    prompt = f"""
-    Aşağıdaki soruya detaylı ve eğitici bir yanıt ver.
-    - Eğer soru bir akupunktur noktasıysa (örneğin GB20 veya Fengchi gibi), şu başlıkları içeren detaylı açıklama yap:
-        1. Anatomik konum
-        2. Uygulama derinliği ve açısı
-        3. Ana etkileri (örneğin: rüzgar dağıtma, baş ağrısı tedavisi)
-        4. Klinik kullanımda hangi hastalıklarda öne çıkar
-        5. Modern tıbbi açıklamalarla ilişkisi varsa ekle
-    - Eğer genel bir kavramsal soruysa (örneğin Qi nedir?), sadeleştirilmiş ve öğretici bir yanıt ver.
-    Soru: {question}
-    Cevap:
-    """
+    prompt = f"Soru: {question}\nCevap:"
     try:
         client = openai.OpenAI(api_key=os.environ.get("MY_OPENAI_KEY"))
         response = client.chat.completions.create(
@@ -133,75 +119,39 @@ def answer_question(question):
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"❌ Açıklama alınamadı: {str(e)}"
+        return f"Açıklama hatası: {str(e)}"
 
 def get_image_path(query):
     filename = query.strip().upper() + ".jpg"
     path = f"images/{filename}"
     return path if os.path.exists(path) else None
 
-with gr.Blocks(css="""
-    .gr-box { background-color: #f9f9fb; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-    textarea, input { font-size: 17px !important; padding: 14px !important; border-radius: 12px !important; }
-    button { font-size: 17px !important; padding: 12px 24px !important; border-radius: 10px !important; background: #3A86FF; color: white; border: none; }
-    .gr-image { max-height: 280px; border-radius: 12px; margin-top: 10px; }
-    .gr-markdown { font-size: 19px; line-height: 1.7; }
-    .gr-textbox { resize: vertical; }
-    .gr-file { height: 120px !important; min-height: 80px !important; }
-""") as demo:
-    gr.Markdown("""## ☯️🪡 **Akupunktur Uzmanı AI**
-WHO verileri ve Çin Tıbbı Klasik Kitaplar;'' Huang Di Nei Jing'' ''Ben Cao Gang Mu'' ve diğer 22 kitap ile eğitilmiş donanımlı''Akupunktur Aİ Asistanı', Uygulama sahibine kişiselleştirilmiş öneriler üretir. Klasik bilgilerden esinlenilmiş ancak doğrudan alıntı içermeyen yorumlar sunar.""")
+def explain_with_image(query):
+    from gradio import update
+    explanation = answer_question(query)
+    image_path = get_image_path(query)
+    if image_path:
+        return explanation, update(value=image_path, visible=True)
+    else:
+        return explanation, update(visible=False)
 
-    with gr.Row():
-        with gr.Column(scale=1, min_width=400):
-            name = gr.Textbox(label="👤 Hasta Adı Soyadı", placeholder="Ad Soyad")
-            pid = gr.Textbox(label="🆔 Hasta ID", placeholder="123456")
-            symptoms = gr.Textbox(label="🔍 Semptomlar veya Tanı", placeholder="örn: bel ağrısı, baş dönmesi", lines=3)
-            physical = gr.Textbox(label="🩺 Muayene Bulguları", placeholder="örn: palpasyonla hassasiyet, hareket kısıtlılığı", lines=3)
+def process(name, pid, symptoms, physical):
+    try:
+        summary = generate_summary(symptoms, physical)
+        archive_patient_record(name, pid, symptoms, physical, summary)
+        pdf = PDFReport(patient_name=name, patient_id=pid)
+        pdf_path = pdf.create_pdf(summary)
+        return summary, pdf_path
+    except Exception as e:
+        return f"Hata: {str(e)}", None
 
-        with gr.Column(scale=1, min_width=400):
-            output = gr.TextArea(label="📋 Klinik Özet ve Öneriler", lines=25, visible=True)
+demo = gr.Blocks()
+with demo:
+    gr.Markdown("""
+## ☯️ Akupunktur AI Asistanı
 
-    def process(name, pid, symptoms, physical):
-        try:
-            summary = generate_summary(symptoms, physical)
-            archive_patient_record(name, pid, symptoms, physical, summary)
-            pdf = PDFReport(patient_name=name, patient_id=pid)
-            pdf_path = pdf.create_pdf(summary)
-            return summary, pdf_path
-        except Exception as e:
-            return f"❌ İşlem hatası: {str(e)}", None
-
-    submit = gr.Button("🔎 Lütfen Araştır", variant="primary")
-    file_output = gr.File(label="📄 İndirilebilir Rapor", visible=True)
-    submit.click(process, [name, pid, symptoms, physical], [output, file_output])
-
-    with gr.Accordion("🧠 Soru-Cevap & Mini Açıklama Modülü", open=False):
-        with gr.Row():
-            with gr.Column(scale=1):
-                question_input = gr.Textbox(label="💡 Soru Sor", placeholder="örn: Qi eksikliği nedir?")
-                explain_btn = gr.Button("📖 Açıkla")
-            with gr.Column(scale=1):
-                question_output = gr.Textbox(label="📘 Açıklama", lines=6)
-                image_output = gr.Image(label="", type="filepath", visible=False, height=300, show_label=False)
-
-        def explain_with_image(query):
-            explanation = answer_question(query)
-            image_path = get_image_path(query)
-            from gradio import update
-            if image_path:
-                return explanation, update(value=image_path, visible=True)
-            else:
-                return explanation, update(visible=False)
-
-        explain_btn.click(fn=explain_with_image, inputs=[question_input], outputs=[question_output, image_output])
-
-demo = gr.Interface(fn=explain_with_image, inputs=[question_input], outputs=[question_output, image_output])
-
-if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 10000))
-    demo.launch(server_name="0.0.0.0", server_port=port)
+Semptomları girin, Çin Tıbbı prensiplerine göre değerlendirme ve tedavi önerisi alın.
+""")
 
 
 
