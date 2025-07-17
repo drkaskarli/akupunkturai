@@ -3,3 +3,4 @@ openai
 fpdf
 qrcode
 Pillow
+requests
