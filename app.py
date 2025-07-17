@@ -201,7 +201,7 @@ import os
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
     print(f"✅ Uygulama başlatılıyor, port: {port}")
-    demo.launch(server_name="0.0.0.0", server_port=port, share=False)
+    demo.launch(server_name="0.0.0.0", server_port=port)
 
 
 
