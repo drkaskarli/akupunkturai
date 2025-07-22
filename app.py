@@ -197,7 +197,7 @@ WHO verileri ve Çin Tıbbı Klasik Kitaplar;'' Huang Di Nei Jing'' ''Ben Cao Ga
         explain_btn.click(fn=explain_with_image, inputs=[question_input], outputs=[question_output, image_output])
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(server_name="0.0.0.0", server_port=7860)
 
 
 
